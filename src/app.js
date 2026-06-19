@@ -9,6 +9,9 @@ const lotsRouter = require('./routes/lots');
 const spacesRouter = require('./routes/spaces');
 const vehiclesRouter = require('./routes/vehicles');
 const sessionsRouter = require('./routes/sessions');
+const feeAdjustmentsRouter = require('./routes/feeAdjustments');
+const auditRouter = require('./routes/audit');
+const supervisionRouter = require('./routes/supervision');
 const { sendError } = require('./utils/http');
 
 /** 创建 Express 应用。数据库连接与种子由调用方准备。 */
@@ -27,6 +30,9 @@ function createApp() {
   app.use('/api/spaces', spacesRouter);
   app.use('/api/vehicles', vehiclesRouter);
   app.use('/api/sessions', sessionsRouter);
+  app.use('/api/fee-adjustments', feeAdjustmentsRouter);
+  app.use('/api/audit', auditRouter);
+  app.use('/api/supervision', supervisionRouter);
 
   app.use((req, res) => sendError(res, 404, '接口不存在'));
 

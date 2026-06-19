@@ -21,4 +21,11 @@ function parseId(raw) {
   return id;
 }
 
-module.exports = { sendData, sendError, parseId };
+/** 构造带 statusCode 的业务错误，供服务层抛出、由统一错误中间件映射。 */
+function httpError(status, message) {
+  const err = new Error(message);
+  err.statusCode = status;
+  return err;
+}
+
+module.exports = { sendData, sendError, parseId, httpError };

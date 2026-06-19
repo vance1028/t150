@@ -61,3 +61,85 @@ CREATE TABLE IF NOT EXISTS parking_sessions (
   INDEX idx_session_status (status),
   INDEX idx_session_plate (plate_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ===================== 收费敏感操作：审批单 =====================
+-- 免单 / 手工改价 / 打折 / 退款 均走申请-审批，不允许操作员直接生效。
+CREATE TABLE IF NOT EXISTS fee_adjustments (
+  id              INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  session_id      INT UNSIGNED NOT NULL,
+  lot_id          INT UNSIGNED NOT NULL,
+  operator_id     INT UNSIGNED NOT NULL,
+  type            VARCHAR(16) NOT NULL,
+  amount_cents    INT NOT NULL DEFAULT 0,
+  final_fee_cents INT NULL,
+  reason          VARCHAR(500) NOT NULL,
+  tier            TINYINT NOT NULL DEFAULT 1,
+  status          VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+  approver_id     INT UNSIGNED NULL,
+  approved_at     DATETIME(3) NULL,
+  decision_note   VARCHAR(500) NULL,
+  before_fee_cents INT NULL,
+  after_fee_cents  INT NULL,
+  created_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_adj_session FOREIGN KEY (session_id) REFERENCES parking_sessions(id) ON DELETE CASCADE,
+  CONSTRAINT fk_adj_lot FOREIGN KEY (lot_id) REFERENCES parking_lots(id) ON DELETE CASCADE,
+  CONSTRAINT fk_adj_operator FOREIGN KEY (operator_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_adj_approver FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_adj_status (status),
+  INDEX idx_adj_operator (operator_id),
+  INDEX idx_adj_lot (lot_id),
+  INDEX idx_adj_type (type),
+  INDEX idx_adj_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ===================== 防篡改审计链 =====================
+-- 每条记录携带 prev_hash（前一条指纹）与 hash（自身内容指纹），环环相扣。
+-- 审计记录对外只读：应用层不提供任何 update/delete 接口，仅 append + 校验。
+-- 故意不设外键：审计链必须独立于业务表存亡，业务行删除审计仍留存。
+CREATE TABLE IF NOT EXISTS audit_chain (
+  seq         INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  record_id   INT UNSIGNED NOT NULL,
+  actor_id    INT UNSIGNED NULL,
+  event_type  VARCHAR(32) NOT NULL,
+  payload     LONGTEXT NOT NULL,
+  prev_hash   CHAR(64) NOT NULL,
+  hash        CHAR(64) NOT NULL,
+  created_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  INDEX idx_audit_record (record_id),
+  INDEX idx_audit_actor (actor_id),
+  INDEX idx_audit_event (event_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 审计链锚点：记录最新一条的序号与指纹，用于校验尾部是否被删除/篡改。
+CREATE TABLE IF NOT EXISTS audit_anchor (
+  id          TINYINT UNSIGNED PRIMARY KEY,
+  head_seq    INT UNSIGNED NOT NULL DEFAULT 0,
+  head_hash   CHAR(64) NOT NULL,
+  updated_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ===================== 监督规则配置 =====================
+-- 免单/折扣额度上限（超限升级审批）+ 可疑行为规则阈值，均可配。
+CREATE TABLE IF NOT EXISTS supervision_config (
+  config_key   VARCHAR(64) PRIMARY KEY,
+  config_value VARCHAR(255) NOT NULL,
+  updated_at   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 审计链创世锚点（id=1，序号 0，全零指纹）。
+INSERT IGNORE INTO audit_anchor (id, head_seq, head_hash) VALUES (1, 0, '0000000000000000000000000000000000000000000000000000000000000000');
+
+-- 监督默认配置（INSERT IGNORE 保证幂等，可被 PUT /api/supervision/config 覆盖）。
+INSERT IGNORE INTO supervision_config (config_key, config_value) VALUES
+  ('limit_waiver_cents', '500'),
+  ('limit_discount_cents', '500'),
+  ('limit_refund_cents', '500'),
+  ('limit_price_change_cents', '500'),
+  ('frequent_waiver_count', '3'),
+  ('frequent_waiver_window_minutes', '120'),
+  ('frequent_waiver_max_amount_cents', '200'),
+  ('lot_waiver_rate_threshold', '0.3'),
+  ('shift_hours', '8,16,24'),
+  ('shift_change_window_minutes', '30'),
+  ('shift_price_change_count', '3');

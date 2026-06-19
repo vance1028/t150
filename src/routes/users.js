@@ -16,11 +16,11 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { username, password, name, role = 'VIEWER' } = req.body || {};
+    const { username, password, name, role = 'VIEWER', approverLevel = 0 } = req.body || {};
     if (!username || !password || !name) return sendError(res, 400, '用户名、密码、姓名不能为空');
     if (!ROLES.includes(role)) return sendError(res, 400, '非法的角色');
     if (await store.getUserByUsername(username)) return sendError(res, 409, '用户名已存在');
-    return sendData(res, 201, await store.createUser({ username, password, name, role }));
+    return sendData(res, 201, await store.createUser({ username, password, name, role, approverLevel }));
   } catch (e) { return next(e); }
 });
 

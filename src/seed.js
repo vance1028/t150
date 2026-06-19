@@ -10,7 +10,7 @@ const store = require('./data/store');
 async function seed() {
   if ((await store.countUsers()) > 0) return { skipped: true };
 
-  await store.createUser({ username: 'admin', password: 'admin123', name: '系统管理员', role: 'ADMIN' });
+  await store.createUser({ username: 'admin', password: 'admin123', name: '系统管理员', role: 'ADMIN', approverLevel: 2 });
   await store.createUser({ username: 'operator', password: 'operator123', name: '张收费', role: 'OPERATOR' });
   await store.createUser({ username: 'viewer', password: 'viewer123', name: '李值班', role: 'VIEWER' });
 
